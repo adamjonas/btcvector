@@ -103,6 +103,7 @@ def decode_entries(entries):
             "url": dict_["metadata"]["url"],
             "title": dict_["metadata"]["title"],
             "document": dict_["metadata"]["text"],
+            "authors": dict_["metadata"]["authors"],
         }
     return output_data
 
@@ -114,4 +115,20 @@ def query_index(query, index):
     )
     vector = res['data'][0]['embedding']
     result = index.query(vector, top_k=NUM_RESULTS, include_metadata=True)
+    return decode_entries(result.matches)
+
+
+def query_index_by_author(query, index, author):
+    res = openai.Embedding.create(
+        input=[query],
+        engine=OPENAI_EMBED_MODEL
+    )
+    vector = res['data'][0]['embedding']
+    result = index.query(vector,
+                         top_k=NUM_RESULTS,
+                         include_metadata=True,
+                         filter={
+                             "authors": author
+                         }
+                         )
     return decode_entries(result.matches)

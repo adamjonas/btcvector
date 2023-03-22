@@ -19,6 +19,6 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL")
+OPENAI_EMBED_MODEL = os.getenv("OPENAI_EMBED_MODEL", default="text-embedding-ada-002")
 
 NUM_RESULTS = 3  # how many top results wants in the output
