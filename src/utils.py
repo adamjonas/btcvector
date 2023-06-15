@@ -10,13 +10,28 @@ openai.api_key = OPENAI_API_KEY
 
 def get_text_from_strdict(text):
     extracted_text_list = []
-    if len(text) != 0 and type(text) == list:
+    if (type(text) == list and text != []) or type(text) == dict:
         for values in text:
-            dict_ = eval(values)
-            if "text" in (dict_.keys()):
-                extracted_text_list.append(dict_["text"])
-            else:
-                get_text_from_strdict(values)
+            if 'text' in values:
+                parse_str = eval(values)  # Either dict, list, or str
+                if type(parse_str) == dict and "text" in (parse_str.keys()):
+                    assert type(parse_str["text"]) == str
+                    extracted_text_list.append(
+                        parse_str["text"])  # top-level text field in json
+                elif type(parse_str) == dict:
+                    for key in parse_str.keys():
+                        tmp_value = get_text_from_strdict(parse_str[key])
+                        if tmp_value is not None:
+                            assert type(tmp_value) == str or type(
+                                tmp_value) == list
+                            extracted_text_list.append(tmp_value)
+                elif type(parse_str) == list:
+                    value = get_text_from_strdict(parse_str)
+                    if value is not None:
+                        assert type(value) == str or type(value) == list
+                        extracted_text_list.append(value)
+                else:
+                    return None
 
     return extracted_text_list
 
@@ -26,11 +41,17 @@ def get_clean_text(text):
         return text
     elif type(text) == list:
         extracted_text_list = get_text_from_strdict(text)
-        if len(extracted_text_list) != 0:
+        if extracted_text_list is None:
+            return ""
+        elif len(extracted_text_list) != 0:
             extracted_text = " ".join(extracted_text_list)
+            assert type(extracted_text) == str
             return extracted_text
         else:
-            return text
+            assert type(extracted_text_list) == list
+            assert extracted_text_list == []
+            LOGGER.info(f'Provided list is empty')
+            return ""
     else:
         return ""
 
