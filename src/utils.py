@@ -3,6 +3,7 @@ from src.config import *
 import pinecone
 from src.logger import LOGGER
 import openai
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 openai.api_key = OPENAI_API_KEY
 
@@ -34,25 +35,16 @@ def get_clean_text(text):
         return ""
 
 
-def split_text(text, max_words_per_chunk=MAX_WORDS_PER_CHUNK):
-    if len(text) != 0:
-        words = text.split()
-        total_words = len(words)
-        if total_words <= max_words_per_chunk:
-
-            return text
-        else:
-            current_chunk = ""
-            chunks = []
-            for word in words:
-                if len(current_chunk.split()) + len(word.split()) <= max_words_per_chunk:
-                    current_chunk += " " + word
-                else:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = word
-            chunks.append(current_chunk.strip())
-
-            return chunks
+def split_text(text, max_tokens=MAX_TOKENS_PER_CHUNK):
+    if text != "":
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=max_tokens,
+            chunk_overlap=max_tokens // 10,
+            length_function=len,
+        )
+        chunks = text_splitter.split_text(text)
+        LOGGER.info(f'Text split into {len(chunks)} parts')
+        return chunks if len(chunks) > 1 else chunks[0]
     else:
         return ""
 

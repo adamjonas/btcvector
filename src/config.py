@@ -5,7 +5,7 @@ load_dotenv()
 DATA_PATH = os.path.join(os.getcwd(), "data")
 LOG_PATH = os.path.join(os.getcwd(), "logs")
 
-MAX_WORDS_PER_CHUNK = 2500  # chunk the text if it is greater than 2500 words
+MAX_TOKENS_PER_CHUNK = 8191  # chunk the text if it is greater than 8191 tokens
 
 ES_CLOUD_ID= os.getenv("ES_CLOUD_ID")
 ES_USERNAME = os.getenv("ES_USERNAME")
