@@ -2,8 +2,21 @@
 
 Main goal is to make search queries/chatbot from pinecone instead of elastic-search
 
-Required python>=3.9 and install all dependencies using:
-- pip install requirements.txt
+## Installation
+
+We use [poetry](https://python-poetry.org/) for library management. 
+
+- Use `pip install poetry` to install the tool.
+
+- To install the required packages, run:
+```zsh
+poetry install
+```
+
+- To activate the poetry environment, run:
+```zsh
+poetry shell
+```
 
 Set up environment variables: Create .env file in the root folder and add following keys -
 ```commandline
