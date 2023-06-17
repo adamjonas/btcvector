@@ -1,10 +1,16 @@
 from flask import Flask, request
-from src.utils import query_index, query_index_by_author, connect_to_pinecone_index
+
+from src.utils import (
+    connect_to_pinecone_index,
+    query_index,
+    query_index_by_author,
+)
+
 
 pinecone_index = connect_to_pinecone_index()
 
 app = Flask(__name__)
-app.config['JSON_SORT_KEYS'] = False
+app.config["JSON_SORT_KEYS"] = False
 
 
 @app.route("/")
