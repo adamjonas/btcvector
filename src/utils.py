@@ -64,7 +64,7 @@ def get_clean_text(text):
         else:
             assert type(extracted_text_list) == list
             assert extracted_text_list == []
-            LOGGER.info("Provided list is empty")
+            LOGGER.debug("Provided list is empty")
             return ""
     else:
         return ""
@@ -84,7 +84,7 @@ def split_text(text, max_tokens=MAX_TOKENS_PER_CHUNK):
             length_function=tiktoken_len,
         )
         chunks = text_splitter.split_text(text)
-        LOGGER.info(f"Text split into {len(chunks)} parts")
+        LOGGER.debug(f"Text split into {len(chunks)} parts")
         return chunks if len(chunks) > 1 else chunks[0]
     else:
         return ""
