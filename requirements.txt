@@ -5,3 +5,5 @@ pandas==1.5.3
 pinecone_client==2.2.1
 python-dotenv==1.0.0
 tqdm==4.65.0
+python-dotenv==1.0.0
+langchain==0.0.201

@@ -109,7 +109,7 @@ def data_embed_insertion(pinecone_index, data, start_from):
                 individual_data_insertion(pinecone_index, [embed], data[i])
             elif isinstance(text, str) and "This model's maximum context length is 8191 tokens" in str(e):
                 embed = []
-                text_chunk = split_text(text, max_words_per_chunk=1000)
+                text_chunk = split_text(text, max_tokens=MAX_TOKENS_PER_CHUNK // 2)
                 for chunk_of_text_chunk in text_chunk:
                     try:
                         chunk_res_chunk = openai.Embedding.create(input=[chunk_of_text_chunk],
