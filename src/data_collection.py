@@ -47,5 +47,5 @@ def extract_data_from_es(es, es_index):
 
         return output_data_path
     else:
-        LOGGER.info("Could not connect to Elasticsearch")
+        LOGGER.error("Could not connect to Elasticsearch")
         return None
