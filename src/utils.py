@@ -1,6 +1,7 @@
 import openai
 import pandas as pd
 import pinecone
+import tiktoken
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 from src.config import (
@@ -69,12 +70,18 @@ def get_clean_text(text):
         return ""
 
 
+def tiktoken_len(text):
+    tokenizer = tiktoken.get_encoding("cl100k_base")
+    tokens = tokenizer.encode(text, disallowed_special=())
+    return len(tokens)
+
+
 def split_text(text, max_tokens=MAX_TOKENS_PER_CHUNK):
-    if text != "":
+    if isinstance(text, str) and text != "":
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=max_tokens,
-            chunk_overlap=max_tokens // 10,
-            length_function=len,
+            chunk_overlap=max_tokens // 20,
+            length_function=tiktoken_len,
         )
         chunks = text_splitter.split_text(text)
         LOGGER.info(f"Text split into {len(chunks)} parts")

@@ -3,7 +3,16 @@ import os
 import warnings
 from datetime import datetime
 
-from src.config import DATA_PATH, ES_INDEX, LOG_PATH
+from elasticsearch import Elasticsearch
+
+from src.config import (
+    DATA_PATH,
+    ES_CLOUD_ID,
+    ES_INDEX,
+    ES_PASSWORD,
+    ES_USERNAME,
+    LOG_PATH,
+)
 from src.data_collection import extract_data_from_es
 from src.data_insertion import pinecone_data_insertion
 from src.logger import setup_logger
@@ -25,32 +34,18 @@ log = setup_logger(
 def start_data_conversion():
     try:
         pinecone_index = connect_to_pinecone_index()
-        total_inserted_data_count = pinecone_index.describe_index_stats()[
-            "total_vector_count"
-        ]
-        if total_inserted_data_count == 0:
-            log.info("Data collection from elastic-search started...")
-            output_data_path = extract_data_from_es(ES_INDEX)
-            # check we received a data path or not
-            if output_data_path:
-                json_data_path = get_clean_json(output_data_path)[0]
-                pinecone_data_insertion(json_data_path, pinecone_index)
-                log.info("PROCESS OF DATA INSERTION COMPLETED")
+        es = Elasticsearch(
+            cloud_id=ES_CLOUD_ID,
+            http_auth=(ES_USERNAME, ES_PASSWORD),
+        )
+        output_data_path = extract_data_from_es(es, ES_INDEX)
+        if output_data_path:
+            json_data_path = get_clean_json(output_data_path)[0]
+            pinecone_data_insertion(es, json_data_path, pinecone_index)
         else:
-            # Next time we will just insert the data into pinecone,
-            # not extract from ES.
-            json_data_path = os.path.join(
-                f"{DATA_PATH}", f"{ES_INDEX}_refined.json"
-            )
-            pinecone_data_insertion(
-                json_data_path,
-                pinecone_index,
-                start_from=total_inserted_data_count,
-            )
-            log.info("PROCESS OF DATA INSERTION COMPLETED")
-
+            log.info("No files left to upload.")
     except Exception as e:
-        log.info(str(e))
+        log.error(str(e))
 
 
 if __name__ == "__main__":

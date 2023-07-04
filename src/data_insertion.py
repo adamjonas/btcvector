@@ -2,243 +2,130 @@ import json
 import time
 
 import openai
+from langchain.embeddings.openai import OpenAIEmbeddings
 from tqdm.auto import tqdm
 
-from src.config import MAX_TOKENS_PER_CHUNK, OPENAI_API_KEY, OPENAI_EMBED_MODEL
+from src.config import ES_INDEX, OPENAI_API_KEY, OPENAI_EMBED_MODEL
 from src.logger import LOGGER
-from src.utils import split_text
 
 
 openai.api_key = OPENAI_API_KEY
 
 
-def individual_data_insertion(pinecone_index, embed, data):
-    url = data["url"]
-    if data["url"] is None:
-        url = "No url in data"
-
-    text = data["clean_text"]
-    if isinstance(text, list):
-        text = " ".join(text)
-    # we shorten the text and give link if text size exceed
-    if len(text.encode("utf-8")) > 30000:
-        text = (
-            split_text(text, 30)[0]
-            + f"...for more details you can click on below link\n {data['url']}"
-        )
-
-    id = [data["es_id"]]
-
-    domain = data["domain"]
-    if data["domain"] is None:
-        domain = ""
-
-    created_at = data["created_at"]
-    if data["created_at"] is None:
-        created_at = ""
-
-    metadata_id = data["id"]
-    if data["id"] is None:
-        metadata_id = ""
-
-    title = data["title"]
-    if data["title"] is None:
-        title = ""
-
-    type_ = data["type"]
-    if data["type"] is None:
-        type_ = ""
-
-    authors = data["authors"]
-    if data["authors"] is None:
-        authors = ""
-
-    meta_data = [
-        {
-            "domain": domain,
-            "created_at": created_at,
-            "id": metadata_id,
-            "title": title,
-            "text": text,
-            "type": type_,
-            "url": url,
-            "authors": authors,
-        }
-    ]
-
-    to_upsert = list(zip(id, embed, meta_data))
-
-    # connect and upsert to Pinecone
-    pinecone_index.upsert(vectors=to_upsert)
+def extract_metadata(data):
+    # TODO:- Add `indexed_at` field
+    url = data["url"] if data["url"] else "No url in data"
+    id_ = data["es_id"]  # Maintain ElasticSearch ID in pinecone
+    domain = data["domain"] if data["domain"] else ""
+    created_at = data["created_at"] if data["created_at"] else ""
+    metadata_id = data["id"] if data["id"] else ""
+    title = data["title"] if data["title"] else ""
+    type_ = data["type"] if data["type"] else ""
+    authors = data["authors"] if data["authors"] else ""
+    meta_data = {
+        "domain": domain,
+        "created_at": created_at,
+        "id": metadata_id,
+        "title": title,
+        "type": type_,
+        "url": url,
+        "authors": authors,
+    }
+    return id_, meta_data
 
 
-def data_embed_insertion(pinecone_index, data, start_from):
+def data_embed_insertion(es, pinecone_index, data):
     LOGGER.info(
         "Generating of embeddings of text and insertion of data started..."
     )
     start_time = time.time()
-    embeds = []
     completed_row_count = 0
-    for i in tqdm(range(start_from, len(data))):
+    batch_size = 50
+    texts = []
+    metadatas = []
+    ids = []
+    embed_model = OpenAIEmbeddings(
+        model=OPENAI_EMBED_MODEL, openai_api_key=OPENAI_API_KEY
+    )
+
+    def truncate_text(text_, url):
+        return (
+            text_[:1000]
+            + f"...for more details you can click on below link\n {url}"
+            if len(text_.encode("utf-8")) >= 30000
+            else text_
+        )
+
+    def update_query(document_ids, x):
+        return {
+            "script": {
+                "source": f"ctx._source.upload_to_pinecone = {x}",
+                "lang": "painless",
+            },
+            "query": {"terms": {"_id": document_ids}},
+        }
+
+    for i in tqdm(range(len(data))):
         LOGGER.info(f"Processing row number: {i}")
-        # create embeddings (try-except added to avoid RateLimitError)
+
+        text = data[i]["clean_text"]
+        text = [text] if isinstance(text, str) else text
+        id_, metadata = extract_metadata(data[i])
+        record_metadata = [
+            {
+                "chunk": j,
+                "text": truncate_text(text_, data[i]["url"]),
+                **metadata,
+            }
+            for j, text_ in enumerate(text)
+        ]
+        ids.extend([f"{id_}-{i}" for i in range(len(text))])
+        texts.extend(text)
+        metadatas.extend(record_metadata)
+        if len(texts) >= batch_size:
+            embeds = embed_model.embed_documents(texts)
+            try:
+                pinecone_index.upsert(vectors=zip(ids, embeds, metadatas))
+                LOGGER.info(
+                    f"{completed_row_count} rows inserted into pinecone."
+                )
+                es.update_by_query(index=ES_INDEX, body=update_query(ids, 0))
+                LOGGER.info(f"all chunks updated till document #{i}")
+            except Exception as e:
+                LOGGER.error(f"error uploading the documents: {e}")
+                return
+
+            ids = []
+            texts = []
+            metadatas = []
+
+        completed_row_count = i
+
+    if len(texts) > 0:
+        embeds = embed_model.embed_documents(texts)
         try:
-            text = data[i]["clean_text"]
-            if isinstance(text, str):
-                res = openai.Embedding.create(
-                    input=[text], engine=OPENAI_EMBED_MODEL
-                )
-                embed = res["data"][0]["embedding"]
-                individual_data_insertion(pinecone_index, [embed], data[i])
-            else:
-                embed = []
-                for text_chunk in text:
-                    try:
-                        res_chunk = openai.Embedding.create(
-                            input=[text_chunk], engine=OPENAI_EMBED_MODEL
-                        )
-                        embed_chunk = res_chunk["data"][0]["embedding"]
-                        embed.append(embed_chunk)
-                    except Exception as e:
-                        LOGGER.info(str(e))
-                        LOGGER.info(f"Error generated in completion: {i}")
-                        time.sleep(120)
-                        res_chunk = openai.Embedding.create(
-                            input=[text_chunk], engine=OPENAI_EMBED_MODEL
-                        )
-                        embed_chunk = res_chunk["data"][0]["embedding"]
-                        embed.append(embed_chunk)
-
-                individual_data_insertion(pinecone_index, embed, data[i])
-
-            LOGGER.info(f"{i} rows inserted into pinecone.")
-            embeds.append(embed)
-            completed_row_count = i
+            pinecone_index.upsert(vectors=zip(ids, embeds, metadatas))
+            es.update_by_query(index=ES_INDEX, body=update_query(ids, 0))
+            LOGGER.info("all documents updated")
         except Exception as e:
-            LOGGER.info(str(e))
-            LOGGER.info(f"Error generated in completion: {i}")
-            time.sleep(120)
-            text = data[i]["clean_text"]
-            if "This model's maximum context length is 8191 tokens" not in str(
-                e
-            ) and isinstance(text, str):
-                res = openai.Embedding.create(
-                    input=[text], engine=OPENAI_EMBED_MODEL
-                )
-                embed = res["data"][0]["embedding"]
-                individual_data_insertion(pinecone_index, [embed], data[i])
-            elif isinstance(
-                text, str
-            ) and "This model's maximum context length is 8191 tokens" in str(
-                e
-            ):
-                embed = []
-                text_chunk = split_text(
-                    text, max_tokens=MAX_TOKENS_PER_CHUNK // 2
-                )
-                for chunk_of_text_chunk in text_chunk:
-                    try:
-                        chunk_res_chunk = openai.Embedding.create(
-                            input=[chunk_of_text_chunk],
-                            engine=OPENAI_EMBED_MODEL,
-                        )
-                        chunk_embed_chunk = chunk_res_chunk["data"][0][
-                            "embedding"
-                        ]
-                        embed.append(chunk_embed_chunk)
-                    except Exception as e:
-                        LOGGER.info(f"error generated in {i}")
-                        LOGGER.info(f"error:- {str(e)}")
-                        time.sleep(120)
-                        chunk_res_chunk = openai.Embedding.create(
-                            input=[chunk_of_text_chunk],
-                            engine=OPENAI_EMBED_MODEL,
-                        )
-                        chunk_embed_chunk = chunk_res_chunk["data"][0][
-                            "embedding"
-                        ]
-                        embed.append(chunk_embed_chunk)
-                individual_data_insertion(pinecone_index, embed, data[i])
-
-            else:
-                embed = []
-                for text_chunk in text:
-                    try:
-                        res_chunk = openai.Embedding.create(
-                            input=[text_chunk], engine=OPENAI_EMBED_MODEL
-                        )
-                        embed_chunk = res_chunk["data"][0]["embedding"]
-                        embed.append(embed_chunk)
-                    except Exception as e:
-                        LOGGER.info(str(e))
-                        LOGGER.info(f"Error generated in completion: {i}")
-                        time.sleep(120)
-                        if (
-                            "This model's maximum context length is 8191 tokens"
-                            in str(e)
-                        ):
-                            text_chunk = split_text(text_chunk, 500)
-                            for chunk_of_text_chunk in text_chunk:
-                                try:
-                                    chunk_res_chunk = openai.Embedding.create(
-                                        input=[chunk_of_text_chunk],
-                                        engine=OPENAI_EMBED_MODEL,
-                                    )
-                                    chunk_embed_chunk = chunk_res_chunk["data"][
-                                        0
-                                    ]["embedding"]
-                                    embed.append(chunk_embed_chunk)
-                                except Exception:
-                                    time.sleep(120)
-                                    chunk_res_chunk = openai.Embedding.create(
-                                        input=[chunk_of_text_chunk],
-                                        engine=OPENAI_EMBED_MODEL,
-                                    )
-                                    chunk_embed_chunk = chunk_res_chunk["data"][
-                                        0
-                                    ]["embedding"]
-                                    embed.append(chunk_embed_chunk)
-                        else:
-                            res_chunk = openai.Embedding.create(
-                                input=[text_chunk], engine=OPENAI_EMBED_MODEL
-                            )
-                            embed_chunk = res_chunk["data"][0]["embedding"]
-                            embed.append(embed_chunk)
-                individual_data_insertion(pinecone_index, embed, data[i])
-
-            embeds.append(embed)
-            LOGGER.info(f"{i} rows inserted into pinecone.")
-            completed_row_count = i
+            LOGGER.error(f"error uploading the documents: {e}")
+            return
 
     LOGGER.info(
-        f"Embeddings and insertion from {start_from} upto {completed_row_count}"
+        f"Embeddings and insertion upto {completed_row_count}"
         f" is completed and it took {time.time() - start_time:.2f} secs"
     )
     return completed_row_count
 
 
-def pinecone_data_insertion(json_data_path, pinecone_index, start_from=None):
+def pinecone_data_insertion(es, json_data_path, pinecone_index):
     LOGGER.info("Generation and Insertion of embeddings of all data started...")
     start_time = time.time()
     file = open(json_data_path)
     data = json.load(file)
-
-    if not start_from:
-        start_from = 0
-
-    if start_from != len(data):
-        while start_from != len(data) - 1:
-            try:
-                last_row = data_embed_insertion(
-                    pinecone_index, data, start_from
-                )
-                start_from = last_row
-            except Exception:
-                pass
-        LOGGER.info(
-            f"Generation and Insertion of embeddings of all data completed and "
-            f"it took {time.time() - start_time:.2f} seconds."
-        )
-        file.close()
-    else:
-        LOGGER.info("Data has already been inserted")
+    file.close()
+    data_embed_insertion(es, pinecone_index, data)
+    LOGGER.info(
+        f"Generation and Insertion of embeddings of all data completed and "
+        f"it took {time.time() - start_time:.2f} seconds."
+    )
