@@ -1,0 +1,16 @@
+[flake8]
+exclude =
+    .git
+    __pycache__
+    *.egg-info
+    */migrations
+    venv
+    .venv
+    data
+    .ipynb_checkpoints
+    .idea
+    .github
+    .idea
+    build
+
+max-line-length = 80
