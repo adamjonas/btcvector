@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "btcvector"
+version = "0.1.0"
+description = ""
+authors = ["Aman Rojjha <aman.rojjha@research.iiit.ac.in>", "urvish <urvishp80@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+elasticsearch = "8.8.0"
+Flask = "2.3.2"
+openai = "0.27.8"
+pandas = "2.0.2"
+pinecone-client = "2.2.2"
+python-dotenv = "1.0.0"
+tqdm = "4.65.0"
+jupyter = "^1.0.0"
+langchain = "0.0.201"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
