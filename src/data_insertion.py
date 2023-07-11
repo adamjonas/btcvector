@@ -1,5 +1,6 @@
 import json
 import time
+import uuid
 
 import openai
 from langchain.embeddings.openai import OpenAIEmbeddings
@@ -79,7 +80,7 @@ def data_embed_insertion(es, pinecone_index, data):
             }
             for j, text_ in enumerate(text)
         ]
-        ids.extend([f"{id_}-{i}" for i in range(len(text))])
+        ids.extend([id_ + '_' + uuid.uuid4()] * len(text))
         texts.extend(text)
         metadatas.extend(record_metadata)
         if len(texts) >= batch_size:
